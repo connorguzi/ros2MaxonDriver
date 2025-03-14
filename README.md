@@ -106,6 +106,8 @@ This script will prompt you to enter position values for four motors, then publi
 - Always source the workspace before running the node.
 - The driver first initializes the USB gateway motor before connecting additional motors via CAN.
 - Ensure the motor driver is running before sending commands.
+- The max velocity of the motors appears to be 4500 - do not exceed this value
+- The units for position seems to be rad * 10^-5, so a value of 200000 would be one full rotation
 
 ## Contributors
 
