@@ -37,24 +37,31 @@ class InputPublisher(Node):
         """Continuously prompt for input and publish to the topic."""
         try:
             while rclpy.ok():
-                user_input = input("Enter motor 1 position: ")  # Get input for motor 1 and set message data
+                user_input = input("Enter motor 1 position, velocity: ")  # Get input for motor 1 and set message data
                 msg = MotorStates()
                 msg.header.stamp = self.get_clock().now().to_msg()
-                
+                position = float(user_input.split(',')[0])
+                velocity = float(user_input.split(',')[1])
                 # NOTE: The velocity and current fields are arbitrary and not currently used. Values need to be set to have no errors 
-                motor1 = MotorState(motor_name='1', velocity=5.5, position=float(user_input), current=2.1)
+                motor1 = MotorState(motor_name='1', velocity=velocity, position=position, current=2.1)
                 motor1.header.stamp = self.get_clock().now().to_msg()
                 
-                user_input = input("Enter motor 2 position: ")  # Get input for motor 2 and set message data
-                motor2 = MotorState(motor_name='2', velocity=5.5, position=float(user_input), current=2.1)
+                user_input = input("Enter motor 2 position, velocity: ")  # Get input for motor 2 and set message data
+                position = float(user_input.split(',')[0])
+                velocity = float(user_input.split(',')[1])
+                motor2 = MotorState(motor_name='2', velocity=velocity, position=position, current=2.1)
                 motor2.header.stamp = self.get_clock().now().to_msg()
                 
-                user_input = input("Enter motor 3 position: ")  # Get input for motor 3 and set message data
-                motor3 = MotorState(motor_name='3', velocity=5.5, position=float(user_input), current=2.1)
+                user_input = input("Enter motor 3 position, velocity: ")  # Get input for motor 3 and set message data
+                position = float(user_input.split(',')[0])
+                velocity = float(user_input.split(',')[1])
+                motor3 = MotorState(motor_name='3', velocity=velocity, position=position, current=2.1)
                 motor3.header.stamp = self.get_clock().now().to_msg()
                 
-                user_input = input("Enter motor 4 position: ")  # Get input for motor 4 and set message data
-                motor4 = MotorState(motor_name='4', velocity=5.5, position=float(user_input), current=2.1)
+                user_input = input("Enter motor 4 position, velocity: ")  # Get input for motor 4 and set message data
+                position = float(user_input.split(',')[0])
+                velocity = float(user_input.split(',')[1])
+                motor4 = MotorState(motor_name='4', velocity=velocity, position=position, current=2.1)
                 motor4.header.stamp = self.get_clock().now().to_msg()                
                 
                 msg.states = [motor1, motor2, motor3, motor4]

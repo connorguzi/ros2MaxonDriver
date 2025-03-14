@@ -68,7 +68,7 @@ Usage:
     -l  : list available interfaces (valid device name and protocol stack required)
     -r  : list supported protocols (valid device name required)
     -v  : display device version
-    -c  : control method (p for position and v for velocity)
+    -c  : control method (0 for position and 1 for velocity)
 ```
 
 ### Publishing Commands
@@ -91,7 +91,7 @@ ros2 topic echo /motor_states
 
 ### Testing the Motors
 
-A provided Python script, `motor_test.py`, allows manual testing of the motors by entering position values via the terminal. It publishes `MotorStates` messages to the `/maxon_bringup/set_all_states` topic.
+A provided Python script, `motor_test.py`, allows manual testing of the motors by entering position and velocity values via the terminal. It publishes `MotorStates` messages to the `/maxon_bringup/set_all_states` topic. Currently you must give both a position and velocity command in the format: position, velocity. Only the position is used when in position control and only velocity is used when in velocity control.
 
 To run the test:
 

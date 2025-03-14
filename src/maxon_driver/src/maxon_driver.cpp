@@ -6,6 +6,7 @@
 // Description : ROS2 Maxon EPOS2 Driver for roboendo project - should work for EPOS4 with farily minimal changes
 // Usage       : $ ros2 run maxon_driver maxon_driver
 // NOTES       : run $ source install/setup.bash first to allow for the custom messages
+//               - Currently only uses position control but should be easily modifiable to use velocity control (change VCS_position commands to VCS_velocity)
 //============================================================================
 
 #include <iostream>
@@ -31,28 +32,61 @@
 typedef void* HANDLE;
 typedef int BOOL;
 
+enum EAppMode
+{
+	AM_UNKNOWN,
+	AM_DEMO,
+	AM_INTERFACE_LIST,
+	AM_PROTOCOL_LIST,
+	AM_VERSION_INFO
+};
+
+#define POSITION 0
+#define VELOCITY 1
+
+#ifndef MMC_SUCCESS
+	#define MMC_SUCCESS 0
+#endif
+
+#ifndef MMC_FAILED
+	#define MMC_FAILED 1
+#endif
+
+#ifndef MMC_MAX_LOG_MSG_SIZE
+	#define MMC_MAX_LOG_MSG_SIZE 512
+#endif
+
+
 using namespace std;
 using MotorStates = maxon_epos_msgs::msg::MotorStates;
+
 // using maxon_msgs::msg::MotorStates;
-
-
 
 
 class MaxonDriverNode : public rclcpp::Node
 {
 public:
-    MaxonDriverNode() : Node("maxon_driver_node")
+    MaxonDriverNode(int argc, char** argv) : Node("maxon_driver_node")
     {
         // Initialization of the drivers:;
             // First open the gateway motor via USB, and then subsequent sub motors via CAN
             // Then activate the position mode of the motors to enable position control
             // Finally enable the motors to run
         SetDefaultParameters();
+        ParseArguments(argc, argv);
         OpenDevices(&ulErrorCode);
-        activatePositionMode(gateway_handle, 1, ulErrorCode);
-        activatePositionMode(sub_handle, 2, ulErrorCode);
-        activatePositionMode(sub_handle, 3, ulErrorCode);
-        activatePositionMode(sub_handle, 4, ulErrorCode);
+        if(controlMethod == POSITION){
+            activatePositionMode(gateway_handle, 1, ulErrorCode);
+            activatePositionMode(sub_handle, 2, ulErrorCode);
+            activatePositionMode(sub_handle, 3, ulErrorCode);
+            activatePositionMode(sub_handle, 4, ulErrorCode);
+        }
+        else{
+            activateVelocityMode(gateway_handle, 1, ulErrorCode);
+            activateVelocityMode(sub_handle, 2, ulErrorCode);
+            activateVelocityMode(sub_handle, 3, ulErrorCode);
+            activateVelocityMode(sub_handle, 4, ulErrorCode);            
+        }
 
         VCS_SetEnableState(gateway_handle, 1, &ulErrorCode);
         VCS_SetEnableState(sub_handle, 2, &ulErrorCode);
@@ -84,9 +118,11 @@ private:
     string g_protocolStackName;
     string g_interfaceName;
     string g_portName;
+    int controlMethod;
     int g_baudrate = 0;
 	unsigned int ulErrorCode = 0;
-    
+    EAppMode g_eAppMode = AM_DEMO;
+        
     // Subscriber to the MotorStates topic
     rclcpp::Subscription<MotorStates>::SharedPtr motor_states_subscriber_;
 
@@ -98,22 +134,23 @@ private:
         {
             unsigned short motor = std::stoul(state.motor_name);
             long position = state.position;
+            long velocity = state.velocity;
 
-            RCLCPP_INFO(this->get_logger(), "Received command for motor ID: %d, Position: %ld",
-                        motor, position);
+            RCLCPP_INFO(this->get_logger(), "Received command for motor ID: %d, Position: %ld, Velocity: %ld",
+                        motor, position, velocity);
 
             switch (motor)
             {
             // If the first motor is being controlled then use the gateway handle, else use the subdevice handle
             case 1:
-                controlMotor(gateway_handle, motor, ulErrorCode, position);
+                controlMotor(gateway_handle, motor, ulErrorCode, position, velocity);
                 
                 break;
             
             case 2:
             case 3:
             case 4:
-                controlMotor(sub_handle, motor, ulErrorCode, position);
+                controlMotor(sub_handle, motor, ulErrorCode, position, velocity);
 
                 break;
             }
@@ -121,29 +158,38 @@ private:
     }
 
     // Function to send commands to a specific motor
-    void controlMotor(HANDLE p_DeviceHandle, unsigned short motor_id, unsigned int & p_rlErrorCode, long position)
+    void controlMotor(HANDLE p_DeviceHandle, unsigned short motor_id, unsigned int & p_rlErrorCode, long position, long velocity)
     {
         RCLCPP_INFO(this->get_logger(), "Setting motor %d to Position: %ld",
                     motor_id, position);
 
-        // Calls proprietary EPOS move command
-        if(VCS_MoveToPosition(p_DeviceHandle, motor_id, position, 0, 1, &p_rlErrorCode) == 0)
-			{
-                RCLCPP_FATAL(this->get_logger(), "VCS_MoveToPosition Failed");
-			}
+        if(controlMethod == POSITION){
+            if(VCS_MoveToPosition(p_DeviceHandle, motor_id, position, 0, 1, &p_rlErrorCode) == 0)
+                    {
+                        RCLCPP_FATAL(this->get_logger(), "VCS_MoveToPosition Failed");
+                    }
+        }
+
+        else{
+            if(VCS_MoveWithVelocity(p_DeviceHandle, motor_id, velocity, &p_rlErrorCode) == 0)
+                    {
+                        RCLCPP_FATAL(this->get_logger(), "VCS_MoveWithVelocity Failed");
+                    }   
+        }
+
     }
 
     // Enables for position control for the motors
     void activatePositionMode(HANDLE p_DeviceHandle, unsigned short motor_id, unsigned int & p_rlErrorCode){
         VCS_ActivateProfilePositionMode(p_DeviceHandle, motor_id, &p_rlErrorCode);
     }
+    // Enable velocity control 
+    void activateVelocityMode(HANDLE p_DeviceHandle, unsigned short motor_id, unsigned int & p_rlErrorCode){
+        VCS_ActivateProfileVelocityMode(p_DeviceHandle, motor_id, &p_rlErrorCode);
+    }
 
     void SetDefaultParameters()
     {
-        // m1_nodeID = 1;
-        // m2_nodeID = 2;
-        // m3_nodeID = 3;
-        // m4_nodeID = 4;
 
         // Communication to gateway motor is via USB with the baudrate of 1000000
         g_deviceName = "EPOS2"; 
@@ -151,6 +197,7 @@ private:
         g_interfaceName = "USB"; 
         g_portName = "USB0"; 
         g_baudrate = 1000000; 
+        controlMethod = POSITION;
     }
 
     int OpenDevices(unsigned int* p_pErrorCode)
@@ -220,16 +267,96 @@ private:
         return lResult;
     }
 
+    int ParseArguments(int argc, char** argv)
+    {
+        int lOption;
+        int lResult = MMC_SUCCESS;
+
+        opterr = 0;
+
+        while((lOption = getopt(argc, argv, "hlrvd:s:i:p:b:n:c:")) != -1)
+        {
+            switch (lOption)
+            {
+                case 'h':
+                    PrintUsage();
+                    lResult = 1;
+                    break;
+                case 'd':
+                    g_deviceName = optarg;
+                    break;
+                case 's':
+                    g_protocolStackName = optarg;
+                    break;
+                case 'i':
+                    g_interfaceName = optarg;
+                    break;
+                case 'p':
+                    g_portName = optarg;
+                    break;
+                case 'b':
+                    g_baudrate = atoi(optarg);
+                    break;
+                case 'n':
+                    m1_nodeID = (unsigned short)atoi(optarg);
+                    break;
+                case 'l':
+                    g_eAppMode = AM_INTERFACE_LIST;
+                    break;
+                case 'r':
+                    g_eAppMode = AM_PROTOCOL_LIST;
+                    break;
+                case 'v':
+                    g_eAppMode = AM_VERSION_INFO;
+                    break;
+                case 'c':
+                    controlMethod = atoi(optarg);
+                    break;
+                case '?':  // unknown option...
+                    stringstream msg;
+                    msg << "Unknown option: '" << char(optopt) << "'!";
+                    LogInfo(msg.str());
+                    PrintUsage();
+                    lResult = MMC_FAILED;
+                    break;
+            }
+        }
+
+        return lResult;
+    }
+    void PrintUsage()
+    {
+        cout << "Usage: HelloEposCmd" << endl;
+        cout << "\t-h : this help" << endl;
+        cout << "\t-n : node id (default 1)" << endl;
+        cout << "\t-d   : device name (EPOS2, EPOS4, default - EPOS4)"  << endl;
+        cout << "\t-s   : protocol stack name (MAXON_RS232, CANopen, MAXON SERIAL V2, default - MAXON SERIAL V2)"  << endl;
+        cout << "\t-i   : interface name (RS232, USB, CAN_ixx_usb 0, CAN_kvaser_usb 0,... default - USB)"  << endl;
+        cout << "\t-p   : port name (COM1, USB0, CAN0,... default - USB0)" << endl;
+        cout << "\t-b   : baudrate (115200, 1000000,... default - 1000000)" << endl;
+        cout << "\t-l   : list available interfaces (valid device name and protocol stack required)" << endl;
+        cout << "\t-r   : list supported protocols (valid device name required)" << endl;
+        cout << "\t-v   : display device version" << endl;
+        cout << "\t-c   : control method (0 for position and 1 for velocity)" << endl;
+    }
+
+    void LogInfo(string message)
+    {
+        cout << message << endl;
+    }
+
 };
 
 
 int main(int argc, char ** argv)
 {
-  rclcpp::init(argc, argv);
+//   rclcpp::init(argc, argv);
+  rclcpp::init(0, nullptr);
+
 
 //   std::shared_ptr<MaxonDriverNode> maxon_driver = MaxonDriverNode();
 
-  rclcpp::spin(std::make_shared<MaxonDriverNode>());
+  rclcpp::spin(std::make_shared<MaxonDriverNode>(argc, argv));
   rclcpp::shutdown();
   return 0;
 }
